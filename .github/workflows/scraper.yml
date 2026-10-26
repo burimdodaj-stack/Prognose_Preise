@@ -1,0 +1,69 @@
+name: ParkVia Wien + Zürich Scraper
+
+on:
+  schedule:
+    - cron: "33 1 * * *"   # täglich um 01:33 UTC (wie bisher)
+  workflow_dispatch:         # manueller Start jederzeit möglich
+    inputs:
+      city:
+        description: "Welche Stadt?"
+        type: choice
+        options: [alle, wien, zuerich]
+        default: alle
+
+permissions:
+  contents: write            # nur für den monatlichen Keepalive-Commit
+
+concurrency:
+  group: parkvia-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: Google Chrome installieren
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Scraper ausführen
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        run: python scraper_vie_ch.py --city "${{ github.event.inputs.city || 'alle' }}"
+
+      - name: Screenshot bei Fehler hochladen
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: debug/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # GitHub deaktiviert geplante Workflows in öffentlichen Repositories nach 60 Tagen
+      # ohne Commit. Einmal im Monat wird deshalb eine kleine Datei aktualisiert.
+      - name: Keepalive (1. des Monats)
+        if: always() && github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%d)" = "01" ]; then
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > .keepalive
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .keepalive
+            git commit -m "keepalive" || exit 0
+            git push
+          fi
