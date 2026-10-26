@@ -1,0 +1,15 @@
+# Zugangsdaten NIEMALS hochladen – das Repository ist öffentlich
+credentials.json
+*.json
+!package.json
+.env
+
+# Debug-Ausgaben
+debug/
+*.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
